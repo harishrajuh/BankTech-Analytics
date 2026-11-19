@@ -19,6 +19,7 @@ from sqlalchemy.ext.asyncio import create_async_engine
 # All ORM models must be imported (directly or transitively) before autogenerate.
 from app.auth.models import Base  # noqa: F401 — registers UserOrm with metadata
 import app.surveys.models  # noqa: F401 — registers survey tables with the shared Base
+import app.rag.models  # noqa: F401 — registers KBDocumentOrm with metadata
 
 
 # ── Alembic config ────────────────────────────────────────────────────────────
@@ -49,6 +50,11 @@ def get_url() -> str:
         if url.startswith(old):
             url = url.replace(old, new, 1)
             break
+
+    # Inside Docker, resolve localhost:5432 / 127.0.0.1:5432 to container name 'postgres'
+    if os.path.exists("/.dockerenv") or os.environ.get("DOCKER_CONTAINER") == "true":
+        url = url.replace("@localhost:5432", "@postgres:5432").replace("@127.0.0.1:5432", "@postgres:5432")
+
     return url
 
 

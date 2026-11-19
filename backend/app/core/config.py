@@ -10,7 +10,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
-        env_file=".env",
+        env_file=(".env", "../.env"),
         env_file_encoding="utf-8",
         case_sensitive=False,
         extra="ignore",
@@ -37,20 +37,64 @@ class Settings(BaseSettings):
         Accepts plain postgresql://, postgresql+asyncpg://, or postgresql+psycopg://.
         """
         if v.startswith("postgresql://"):
-            return v.replace("postgresql://", "postgresql+psycopg://", 1)
-        if v.startswith("postgresql+asyncpg://"):
-            return v.replace("postgresql+asyncpg://", "postgresql+psycopg://", 1)
+            v = v.replace("postgresql://", "postgresql+psycopg://", 1)
+        elif v.startswith("postgresql+asyncpg://"):
+            v = v.replace("postgresql+asyncpg://", "postgresql+psycopg://", 1)
+
+        import os
+        if os.path.exists("/.dockerenv") or os.environ.get("DOCKER_CONTAINER") == "true":
+            v = v.replace("@localhost:5432", "@postgres:5432").replace("@127.0.0.1:5432", "@postgres:5432")
+
         return v
 
     # ── (Phase 1+) LLM / RAG ──────────────────────────────────────────────
+    gemini_api_key: str = ""
     openai_api_key: str = ""
     chroma_persist_directory: str = "./data/chroma_db"
+
+    @property
+    def effective_api_key(self) -> str:
+        """Return GEMINI_API_KEY if set, otherwise fallback to OPENAI_API_KEY."""
+        return self.gemini_api_key or self.openai_api_key
+
+    @property
+    def llm_provider(self) -> str:
+        key = self.effective_api_key
+        if self.gemini_api_key or key.startswith("AIza"):
+            return "gemini"
+        if self.openai_api_key or key.startswith("sk-"):
+            return "openai"
+        return "gemini" if key else "none"
+
+    # RAG configuration
+    rag_chunk_size: int = 800
+    rag_chunk_overlap: int = 150
+    rag_max_file_size_mb: int = 20
+    rag_embed_model: str = "gemini-embedding-001"
+    rag_generation_model: str = "gemini-flash-lite-latest"
+    rag_max_distance: float = 1.5
+    rag_request_timeout: int = 60
 
     # ── CORS ───────────────────────────────────────────────────────────────
     frontend_origin: str = "http://localhost:5173"
 
 
 @lru_cache
-def get_settings() -> Settings:
-    """Cached settings singleton — safe to call anywhere."""
+def _get_cached_settings() -> Settings:
     return Settings()
+
+
+def get_settings() -> Settings:
+    """Cached settings singleton with automatic reload if API key was updated."""
+    s = _get_cached_settings()
+    if not s.effective_api_key:
+        try:
+            from dotenv import find_dotenv, load_dotenv
+            dotenv_path = find_dotenv(usecwd=True)
+            if dotenv_path:
+                load_dotenv(dotenv_path, override=False)
+            _get_cached_settings.cache_clear()
+            s = _get_cached_settings()
+        except Exception:
+            pass
+    return s

@@ -135,6 +135,35 @@ export interface SubmissionSummary {
   is_voided: boolean
 }
 
+export interface SubmittedSurveyDetail {
+  id: string
+  survey_type: 'employee' | 'manager' | 'customer'
+  respondent_id: string
+  department: string
+  submitted_at: string
+  is_voided: boolean
+  experience_range?: string | null
+  bank_type?: string | null
+  interaction_type?: string | null
+  service_type?: string | null
+  open_feedback?: string | null
+  avg_score: number
+  scores: Record<string, number>
+}
+
+export interface SurveySubmissionsReport {
+  total: number
+  counts: {
+    employee: number
+    manager: number
+    customer: number
+  }
+  all: SubmittedSurveyDetail[]
+  employee: SubmittedSurveyDetail[]
+  manager: SubmittedSurveyDetail[]
+  customer: SubmittedSurveyDetail[]
+}
+
 // ── Analytics API response types ──────────────────────────────────────────
 
 export interface IndexResult {
@@ -204,21 +233,93 @@ export interface AnalyticsFilters {
 
 // ── RAG / FAQ ─────────────────────────────────────────────────────────────
 
+/** A source document excerpt cited in an answer. Matches backend SourceCitation schema. */
+export interface SourceCitation {
+  document_id: string
+  title: string
+  page_or_section: string | null
+  relevance_score: number
+}
+
 export interface ChatMessage {
   id: string
   role: 'user' | 'assistant'
   content: string
-  sources?: string[]
+  sources?: SourceCitation[]
   isLoading?: boolean
   isFallback?: boolean
-  timestamp: Date
+  timestamp: Date | string
+  latency_ms?: number
+  feedback?: 'helpful' | 'not_helpful' | 'partially_helpful'
 }
 
+/** POST /api/v1/rag/query request body */
+export interface RAGQueryRequest {
+  question: string
+  top_k?: number
+}
+
+/** POST /api/v1/rag/query response body */
+export interface RAGQueryResponse {
+  answer: string
+  sources: SourceCitation[]
+  is_grounded: boolean
+  latency_ms: number
+}
+
+/** GET /api/v1/rag/documents list item */
+export interface KBDocument {
+  id: string
+  title: string
+  filename: string
+  file_type: string
+  status: 'active' | 'superseded'
+  version: number
+  access_level: 'all' | 'staff' | 'admin'
+  uploaded_at: string
+  chunk_count: number | null
+}
+
+/** GET /api/v1/rag/documents/{id} full document */
+export interface KBDocumentFull extends KBDocument {
+  file_size_bytes: number
+  uploaded_by: string
+  indexed_at: string | null
+  description: string | null
+}
+
+/** PATCH /api/v1/rag/documents/{id}/status body */
+export interface DocumentStatusUpdatePayload {
+  status: 'active' | 'superseded'
+}
+
+/** GET /api/v1/rag/health response */
+export interface RAGHealth {
+  status: 'ok' | 'degraded' | 'error'
+  vector_store: string
+  llm: string
+  details: Record<string, unknown>
+}
+
+// ── RAG Feedback ─────────────────────────────────────────────────────────
+
+export type FeedbackRating = 'helpful' | 'not_helpful' | 'partially_helpful'
+
+export interface MessageFeedback {
+  messageId: string
+  rating: FeedbackRating
+  comment?: string
+}
+
+// ── Legacy compatibility (kept for existing imports) ───────────────────────
+
+/** @deprecated Use RAGQueryRequest instead */
 export interface AskRequest {
   question: string
   conversation_id?: string
 }
 
+/** @deprecated Use RAGQueryResponse instead */
 export interface AskResponse {
   answer: string
   sources: string[]
